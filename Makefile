@@ -1,6 +1,6 @@
 ##
 # Apple wrapper Makefile for SquirrelMail
-# Copyright (c) 2002-2003 by Apple Computer, Inc.
+# Copyright (c) 2002-2005 by Apple Computer, Inc.
 ##
 # Although it is a GNU-like project, it does not come with a Makefile,
 # and the configure script requires user interaction. This Makefile just provides
@@ -11,9 +11,13 @@
 # to appropriate places in the file system, and makes symlinks where necessary.
 
 PROJECT_NAME=squirrelmail
-PROJECT_VERSION=1.4.1
+PROJECT_VERSION=1.4.4
 PROJECT_DIR=$(PROJECT_NAME)-$(PROJECT_VERSION)
 PROJECT_ARCHIVE=$(PROJECT_DIR).tar.gz
+PROJECT_LOCALE_ARCHIVE=all_locales-1.4.4-20050122.tar.gz
+VERSIONS_DIR=/usr/local/OpenSourceVersions
+LICENSE_DIR=/usr/local/OpenSourceLicenses
+
 
 # Configuration values we customize
 #
@@ -39,10 +43,14 @@ ATTACHMENT_DIR_FULL=$(DSTROOT)/$(ATTACHMENT_DIR)
 CONFIG_DIR_FULL=$(DSTROOT)/$(CONFIG_DIR)
 SHARE_DIR_FULL=$(DSTROOT)/$(SHARE_DIR)
 IMAGES_DIR_FULL=$(SHARE_DIR_FULL)/images
+HELP_DIR_FULL=$(SHARE_DIR_FULL)/help
+LOCALE_DIR_FULL=$(SHARE_DIR_FULL)/locale
 TMP_FILE=$(OBJROOT)/tmp-file
 SETUP_DIR_FULL=$(DSTROOT)/$(SYSTEM_LIBRARY_DIR)/ServerSetup/SetupExtras
 SETUP_FILE=squirrelmailsetup
-PROJECT_FILES=Makefile $(LOGO) $(HTTPD_CONF_FILE) $(SETUP_FILE)
+NEW_INDEX_FILE=index.php
+PROJECT_FILES=Makefile $(LOGO) $(HTTPD_CONF_FILE) $(SETUP_FILE) $(NEW_INDEX_FILE) $(PROJECT_ARCHIVE) $(PROJECT_LOCALE_ARCHIVE) SquirrelMail.plist SquirrelMail.txt 
+SRC_DIR_FULL=$(SHARE_DIR_FULL)/src
 
 # These includes provide the proper paths to system utilities
 
@@ -53,6 +61,8 @@ include $(MAKEFILEPATH)/pb_makefiles/commands-$(OS).make
 
 #SILENT=@
 GNUTAR=gnutar
+INSTALL=/usr/bin/install
+DITTO=/usr/bin/ditto
 
 # Build rules
 
@@ -73,7 +83,9 @@ do_untar:
 	$(SILENT) if [ ! -e $(PROJECT_DIR)/README ]; then\
 		$(GNUTAR) -xzf $(PROJECT_ARCHIVE);\
 	fi
-
+	$(SILENT) if [ ! -e locale ]; then\
+		$(GNUTAR) -xzf $(PROJECT_LOCALE_ARCHIVE);\
+	fi
 
 # Custom configuration:
 #
@@ -94,6 +106,7 @@ do_configure:
 		-e 's%^\$$data_dir[ \t].*%$$data_dir = "$(DATA_DIR)";%' \
 		-e 's%^\$$attachment_dir[ \t].*%$$attachment_dir = "$(ATTACHMENT_DIR)";%' \
 		-e 's%^\$$domain[ \t].*%$$domain = getenv(SERVER_NAME);%' \
+		-e 's%^\$$auto_expunge[ \t].*%$$auto_expunge = false;%' \
 		; \
 		echo '/* Whether to hide references to SquirrelMail on login and other pages */'  >> $(PROJECT_DIR)/config/$(CONFIG_FILE); \
 		echo 'global $$hide_sm_attributions;' >> $(PROJECT_DIR)/config/$(CONFIG_FILE); \
@@ -116,9 +129,11 @@ do_configure:
 		cp $(PROJECT_DIR)/config/$(CONFIG_FILE) $(PROJECT_DIR)/config/$(CONFIG_DEFAULT_FILE); \
 	fi
 
-do_install: $(DST_ROOT) $(HTTPD_CONF_DST) $(DATA_DIR_FULL) $(CONFIG_DIR_FULL) $(SHARE_DIR_FULL) $(ATTACHMENT_DIR_FULL) $(SETUP_DIR_FULL)
+do_install: $(DSTROOT) $(HTTPD_CONF_DST) $(DATA_DIR_FULL) $(CONFIG_DIR_FULL) $(SHARE_DIR_FULL) $(ATTACHMENT_DIR_FULL) $(SETUP_DIR_FULL) $(DSTROOT)$(VERSIONS_DIR) $(DSTROOT)$(LICENSE_DIR)
 	$(SILENT) $(ECHO) "Installing $(PROJECT_NAME)..."
+	$(SILENT) $(CHMOD) -R ugo-s $(PROJECT_DIR)/*
 	$(SILENT) $(CP) -r $(PROJECT_DIR)/* $(SHARE_DIR_FULL)
+	$(SILENT) $(CP) index.php $(SRC_DIR_FULL)
 	$(SILENT) $(MV) $(SHARE_DIR_FULL)/config $(CONFIG_DIR_FULL)
 	$(SILENT) $(CD) $(CONFIG_DIR_FULL); ln -s $(SHARE_DIR)/plugins .
 	$(SILENT) $(MV) $(SHARE_DIR_FULL)/data/default_pref $(DATA_DIR_FULL)
@@ -133,7 +148,15 @@ do_install: $(DST_ROOT) $(HTTPD_CONF_DST) $(DATA_DIR_FULL) $(CONFIG_DIR_FULL) $(
 	$(SILENT) $(CP) $(HTTPD_CONF_FILE) $(HTTPD_CONF_DST)/$(HTTPD_DEFAULT_CONF_FILE)
 	$(SILENT) $(CP) $(LOGO) $(IMAGES_DIR_FULL)
 	$(SILENT) $(CP) $(SETUP_FILE) $(SETUP_DIR_FULL)
+	$(INSTALL) -m 444 -o root -g wheel SquirrelMail.plist $(DSTROOT)$(VERSIONS_DIR)
+	$(INSTALL) -m 444 -o root -g wheel SquirrelMail.txt $(DSTROOT)$(LICENSE_DIR)
 	$(SILENT) $(CHMOD) 755 $(SETUP_DIR_FULL)/$(SETUP_FILE)
+	$(SILENT) $(DITTO) locale $(LOCALE_DIR_FULL)
+	$(SILENT) $(CHOWN) -R root:wheel $(LOCALE_DIR_FULL)
+	$(SILENT) $(DITTO) help $(HELP_DIR_FULL)
+	$(SILENT) $(CHOWN) -R root:wheel $(HELP_DIR_FULL)
+	$(SILENT) $(DITTO) images $(IMAGES_DIR_FULL)
+	$(SILENT) $(CHOWN) -R root:wheel $(IMAGES_DIR_FULL)
 	$(SILENT) $(ECHO) "Install complete."
 
 do_installhdrs:
@@ -150,7 +173,7 @@ do_clean:
 	$(SILENT) $(ECHO) "Cleaning $(PROJECT_NAME)..."
 	$(SILENT) -$(RM) -rf $(PROJECT_DIR)
 
-$(DST_ROOT):
+$(DSTROOT):
 	$(SILENT) $(MKDIRS) $@
 
 $(HTTPD_CONF_DST):
@@ -170,3 +193,10 @@ $(SHARE_DIR_FULL):
 
 $(SETUP_DIR_FULL):
 	$(SILENT) $(MKDIRS) $@
+
+$(DSTROOT)$(VERSIONS_DIR):
+	$(SILENT) $(MKDIRS) $@
+
+$(DSTROOT)$(LICENSE_DIR):
+	$(SILENT) $(MKDIRS) $@
+
